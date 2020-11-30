@@ -241,7 +241,6 @@ drawPlatforms: # drawPlatforms()
 	addi $sp, $sp, -4
 	sw $ra, 0($sp)
 	
-	move $t7, $a0
 	la $t0, platformValues
 	lw $t1, platformValuesSize
 	li $t2, 0 # index of current
