@@ -1,28 +1,50 @@
+# difficulty levels based on score thresholds
+# level 1 <= 10
+# level 2 > 10
+# level 3 > 20
 .data
 	displayAddress: .word 0x10008000
 	backgroundColor: .word 0xfff7e6
 	platformColor: .word 0x663300
 	doodlerColor: .word 0x33cc33
-	endGameScreenColor: .word 0x66ccff
+	blueColor: .word 0x66ccff
 	doodler: .word 14, 28 # initial X,Y values of doodler to center at the bottom
 	doodlerOffsets: .word 4, 128, 132, 136, 256, 264
-	# randomly choose from an array of 10, 11 or 12 px that will separate the platforms vertically
+	doodlerOffetsToColorBack: .word 132, 256, 264
+	# randomly choose from an array of vertical separators that will separate the platforms vertically
 	# this makes it a reasonable height to jump to
 	# X values are randomized
-	verticalSeparators: .word 8, 9, 10
-	#verticalSeparators_1: .word 10, 11, 12
-	platformValues: .word 12, 31, 0, 0, 0, 0, 0, 0 # [(X,Y)_1,...,(X,Y)_n], here n=4
-	platformValuesSize: .word 32 # n platforms * 8 bytes, here n=4
-	platformWidth: .word 8
+	verticalSeparators: .word 7, 8
+	platformValues: .word 12, 31, 8, 0, 0, 8, 0, 0, 8, 0, 0, 8, 0, 0, 8# [(X,Y,length)_1,...,(X,Y,length)_n], here n=5
+	platformValuesSize: .word 60 # n platforms * 12 bytes, here n=5
+	platformWidthNormal: .word 8
+	platformWidthSmall: .word 6
+	platformWidthVerySmall: .word 4
+	genSmallPlatform: .word 0 # 0: don't generate, 1: generate
 	gameStatus: .word 1 # 1: alive, 0: gameover
-	jumpHeight: .word 13
-	score: .word 0
+	jumpHeight: .word 11
+	scrollHeightThreshold: .word 10
+	refreshRate: .word 49
+	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	scoreLetters: .word 0, 4, 8, 128, 256, 260, 264, 392, 512, 516, 520,
 				16, 20, 24, 144, 272, 400, 528, 532, 536,
 				32, 36, 40, 160, 168, 288, 296, 416, 424, 544, 548, 552,
 				48, 52, 56, 176, 184, 304, 432, 560,
 				64, 68, 72, 192, 320, 324, 328, 448, 576, 580, 584	
 				208, 592
+	pressS: .word 0, 4, 8, 128, 136, 256, 260, 264, 384, 512,
+			16, 20, 24, 144, 152, 272, 400, 528, 
+			32, 36, 40, 160, 288, 292, 296, 416, 544, 548, 552,
+			48, 52, 56, 176, 304, 308, 312, 440, 560, 564, 568,
+			64, 68, 72, 192, 320, 324, 328, 456, 576, 580, 584,
+			84, 92, 96, 100, 220, 348, 352, 356, 484, 604, 608, 612, 108
+	toStart: .word 0, 128, 256, 260, 384, 512, 516,
+			268, 272, 276, 396, 404, 524, 528, 532,
+			32, 36, 40, 160, 288, 292, 296, 424, 544, 548, 552,
+			48, 52, 56, 180, 308, 436, 564,
+			64, 68, 72, 192, 200, 320, 324, 328, 448, 456, 576, 584,
+			80, 84, 88, 208, 216, 336, 464, 592,
+			96, 100, 104, 228, 356, 484, 612
 	zero: .word 0, 4, 8, 128, 136, 256, 264, 384, 392, 512, 516, 520
 	one: .word 4, 8, 136, 264, 392, 520
 	two: .word 0, 4, 8, 136, 256, 260, 264, 384, 512, 516, 520
@@ -42,25 +64,57 @@
 	lw $s1, backgroundColor # $s1 stores background color
 	lw $s2, platformColor # $s2 stores platform color
 	lw $s3, doodlerColor # $s3 stores doodler color
-	lw $s4, endGameScreenColor # $s4 stores endScreenColor
+	lw $s4, blueColor # $s4 stores blue color
 	lw $s5, jumpHeight # $s5 stores jump height
+	
+	# start screen
+	jal drawBackground
+	la $t0, pressS
+	add $t1, $s0, 1284
+	li $t2, 0 # index of current
+	drawPressS:
+		add $t3, $t2, $t0
+		lw $t3, 0($t3)
+		add $t3, $t3, $t1
+		sw $s4, 0($t3)
+		addi $t2, $t2, 4 # update current index
+		blt $t2, 256, drawPressS
+	la $t0, toStart
+	add $t1, $s0, 2064
+	li $t2, 0 # index of current
+	drawToStart:
+		add $t3, $t2, $t0
+		lw $t3, 0($t3)
+		add $t3, $t3, $t1
+		sw $s4, 0($t3)
+		addi $t2, $t2, 4 # update current index
+		blt $t2, 240, drawToStart
+	
+	pressSToStart:
+		li $v0, 32
+		li $a0, 100
+		syscall
+		lw $t0, 0xffff0000
+		bne $t0, 1, pressSToStart
+		lw $t0, 0xffff0004
+		bne $t0, 0x73, pressSToStart
 	
 initialSetup:
 	la $t0, platformValues
 	lw $t1, platformValuesSize
 	
-	li $t2, 8 # index of current, start with 2nd platform
+	li $t2, 12 # index of current, start with 2nd platform
 	initialSetupLoop:
 		add $t3, $t2, $t0 # get addr of current
 		jal getRandomX
 		sw $v0, 0($t3) # save X of current
-		addi $t3, $t3, -8 # get addr of prev
+		addi $t3, $t3, -12 # get addr of prev
 		lw $t4, 4($t3) # get Y value of prev
 		jal getVerticalSeparator
 		sub $t4, $t4, $v0 # add vertical separator to prev Y to get Y of current
-		addi $t3, $t3, 8 # return to addr of current
+		addi $t3, $t3, 12 # return to addr of current
 		sw $t4, 4($t3) # save Y of current
-		addi $t2, $t2, 8 # update current index
+		addi $t2, $t2, 12 # update current index
 		blt $t2, $t1, initialSetupLoop # loop if current index < arraySize
 
 mainLoop:
@@ -84,13 +138,14 @@ mainLoop:
 	
 	la $t0, doodler 
 	lw $t1, 4($t0) # get Y of doodler
-	# 8px from the top is the threshold needed to scroll up
-	ble $t1, 8, scrollUp # if Y of doodler < 8px, scroll up
+	lw $t2, scrollHeightThreshold
+	ble $t1, $t2, scrollUp # if Y of doodler < threshold, scroll up
 	noScrollUp:
 	
-	# refresh rate = 45 ms
+	# refresh rate
+	lw $t0, refreshRate
 	li $v0, 32
-	li $a0, 45
+	move $a0, $t0
 	syscall
 		
 	j mainLoop
@@ -106,6 +161,7 @@ keyboardInput:
 		lw $t9, 0xffff0004 
 		beq $t9, 0x6a, moveLeft # check if "j"
 		beq $t9, 0x6b, moveRight # check if "k"
+		beq $t9, 0x20, pause # check if "spacebar"
 	noInput:
 	
 	lw $ra, 0($sp)
@@ -136,6 +192,26 @@ moveRight: # moveRight()
 		sw $t9, 0($t8)
 	j noInput
 
+pause:	
+	la $t7, pauseOffsets
+	li $t8, 0
+	drawPause:
+		add $t9, $t8, $t7
+		lw $t9, 0($t9)
+		add $t9, $t9, $s0
+		sw $s4, 0($t9)
+		add $t8, $t8, 4
+		blt $t8, 24, drawPause
+	pauseLoop:
+		li $v0, 32 # sleep for a bit
+		li $a0, 100
+		syscall
+		lw $t7, 0xffff0000
+		bne $t7, 1, pauseLoop
+		lw $t7, 0xffff0004
+		bne $t7, 0x20, pauseLoop # press "spacebar" again to resume		
+	jr $ra
+
 scrollUp: # scrollUp()
 	lw $t0, firstDigit
 	lw $t1, secondDigit
@@ -155,28 +231,57 @@ scrollUp: # scrollUp()
 	la $t0, platformValues
 	lw $t1, platformValuesSize
 	
-	li $t2, 8 # index of current, start with 2nd platform
+	li $t2, 12 # index of current, start with 2nd platform
 	transferPlatformValues:
 		add $t3, $t2, $t0 # get addr of current
 		lw $t4, 0($t3) # get X of current
 		lw $t5, 4($t3) # get Y of current
-		addi $t3, $t3, -8 # get addr of prev
+		lw $t6, 8($t3) # get length of current
+		addi $t3, $t3, -12 # get addr of prev
 		sw $t4, 0($t3) # replace X of prev
 		sw $t5, 4($t3) # replace Y of prev
-		addi $t2, $t2, 8 # update current index
+		sw $t6, 8($t3) # replace length of prev
+		addi $t2, $t2, 12 # update current index
 		blt $t2, $t1, transferPlatformValues # loop if current index < arraySize
 	
 	# generate new last platform
-	addi $t2, $t1, -8 # index of last platform
+	addi $t2, $t1, -12 # index of last platform
 	add $t2, $t2, $t0 # get addr of last platform
 	jal getRandomX
 	sw $v0, 0($t2) # save X of new last platform
-	addi $t2, $t2, -8 # get addr of 2nd last platform
+	addi $t2, $t2, -12 # get addr of 2nd last platform
 	lw $t3, 4($t2) # get Y of 2nd last platform
 	jal getVerticalSeparator
 	sub $t3, $t3, $v0 # add vertical separator from prev platform Y value to get Y of current
-	addi $t2, $t2, 8 # get addr of last platform
+	addi $t2, $t2, 12 # get addr of last platform
 	sw $t3, 4($t2) # save Y of new last platform
+	
+	jal convertDigitsToScore
+	blt $v0, 10, generateNormalOnly # if score > 10, generateNormalOrSmall
+	blt $v0, 20, generateNormalOrSmall # if score > 20, generateSmallOrVerySmall
+	# generateSmallOrVerySmall
+	li $a0, 0
+	li $a1, 2
+	jal getRandomNumber
+	beqz $v0, generateSmallOnly
+	lw $t5, platformWidthVerySmall # loop counter
+	sw $t5, 8($t2)
+	j scrollUpLoop	
+	generateSmallOnly: # else if score <= 10
+	lw $t5, platformWidthSmall # loop counter
+	sw $t5, 8($t2)	
+	j scrollUpLoop
+	generateNormalOrSmall:
+	li $a0, 0
+	li $a1, 2
+	jal getRandomNumber
+	beqz $v0, generateNormalOnly
+	lw $t5, platformWidthSmall # loop counter
+	sw $t5, 8($t2)
+	j scrollUpLoop	
+	generateNormalOnly: # else if score <= 5
+	lw $t5, platformWidthNormal # loop counter
+	sw $t5, 8($t2)	
 	
 	scrollUpLoop:
 		la $t0, platformValues
@@ -192,7 +297,7 @@ scrollUp: # scrollUp()
 			lw $t5, 4($t4) # get Y of current
 			addi $t5, $t5, 1 # decrement height of current
 			sw $t5, 4($t4) # update Y of current
-			addi $t3, $t3, 8 # update current index
+			addi $t3, $t3, 12 # update current index
 			blt $t3, $t1, pushdownLoop # loop if current index < arraySize
 		
 		jal drawBackground
@@ -213,9 +318,10 @@ scrollUp: # scrollUp()
 		
 		jal keyboardInput
 		
-		# refresh rate = 45 ms
+		# refresh rate
+		lw $t0, refreshRate
 		li $v0, 32
-		li $a0, 45
+		move $a0, $t0
 		syscall
 		
 		j scrollUpLoop
@@ -243,29 +349,28 @@ drawPlatforms: # drawPlatforms()
 	
 	la $t0, platformValues
 	lw $t1, platformValuesSize
-	li $t2, 0 # index of current
+	li $t2, 0 # index of current platformValues
 	drawPlatformLoop:
 		add $t3, $t2, $t0 # get addr of current
-		lw $t4, 0($t3) # get X of current
-		lw $t5, 4($t3) # get Y of current
-		move $a0, $t4 # prepare args for func call
-		move $a1, $t5
+		lw $a0, 0($t3) # get X of current
+		lw $a1, 4($t3) # get Y of current
 		jal XYToAddressOffset
 		move $t6, $v0 # addr offset of current
 		add $t6, $t6, $s0 # get disp addr of current
 		
 		# check if addr within range, i.e display addr <= x <= bottom-right corner addr
-		blt $t6, $s0, notWithinAddrRange
-		bgt $t6, 0x10008ffc, notWithinAddrRange 
-		lw $t5, platformWidth # loop counter
+		blt $t6, $s0, platformNotWithinAddrRange
+		bgt $t6, 0x10008ffc, platformNotWithinAddrRange 
+		
+		lw $t5, 8($t3) # loop counter
 		drawPlatformWidth:
 			sw $s2, 0($t6)
 			addi $t6, $t6, 4 # get next px
 			addi $t5, $t5, -1 # update counter
 			bgtz $t5, drawPlatformWidth # loop while counter > 0	
-		notWithinAddrRange:
 		
-		addi $t2, $t2, 8 # update current index
+		platformNotWithinAddrRange:
+		addi $t2, $t2, 12 # update current index
 		blt $t2, $t1, drawPlatformLoop # loop if current index < arraySize
 	
 	lw $ra, 0($sp)
@@ -315,6 +420,10 @@ drawDoodler: # drawDoodler()
 	jal XYToAddressOffset
 	move $t0, $v0 # starting addr to render doodler
 	add $t0, $t0, $s0 # add base disp addr
+	# check if addr within range, i.e display addr <= x <= bottom-right corner addr
+	blt $t0, $s0, doodlerNotWithinAddrRange
+	bgt $t0, 0x10008ffc, doodlerNotWithinAddrRange 
+	
 	la $t1, doodlerOffsets
 	li $t2, 0 # counter
 	renderDoodler:
@@ -325,6 +434,7 @@ drawDoodler: # drawDoodler()
 		addi $t2, $t2, 4 # update counter
 		blt $t2, 24, renderDoodler	
 	
+	doodlerNotWithinAddrRange:
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4
 	jr $ra
@@ -333,6 +443,9 @@ endGame: # endGame()
 	li $v0, 32
 	li $a0, 100
 	syscall
+	
+	lw $ra, 0($sp) # pop $ra of drawDoodler caller func
+	addi $sp, $sp, 4
 	
 	jal drawBackground
 	addi $t0, $s0, 1300 # starting addr to render 'SCORE'
@@ -374,6 +487,9 @@ endGame: # endGame()
 	la $t7, gameStatus
 	sw $zero, 0($t7) # gameStatus = 0
 	endGameScreenLoop: # stay on endGameScreen until user restart
+		li $v0, 32
+		li $a0, 100
+		syscall
 		lw $t7, 0xffff0000
 		beq $t7, 1, checkRestart
 		j noRestart
@@ -451,14 +567,18 @@ restartGame: # restartGame() resets all objects to their initial values
 	lw $t1, platformValuesSize
 	li $t3, 12
 	li $t4, 31
+	li $t5, 8
 	sw $t3, 0($t0)
 	sw $t4, 4($t0)
-	li $t2, 8	
+	sw $t5, 8($t0)
+	li $t2, 12 # index of current
 	resetPlatforms:
 		add $t3, $t2, $t0
 		sw $zero, 0($t3)
 		sw $zero, 4($t3)
-		addi $t2, $t2, 8
+		li $t5, 8
+		sw $t5, 8($t3)
+		addi $t2, $t2, 12 # update current index
 		blt $t2, $t1, resetPlatforms
 	
 	# reset doodler values
@@ -517,7 +637,7 @@ getVerticalSeparator: # getVerticalSeparator() returns a random vertical separat
 
 	# choose a random number out of 0, 1 or 2
 	li $a0, 0
-	li $a1, 3 
+	li $a1, 2
 	li $v0, 42 
 	syscall
 	move $t7, $a0 # get random number
@@ -529,6 +649,20 @@ getVerticalSeparator: # getVerticalSeparator() returns a random vertical separat
 	
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4
+	jr $ra
+	
+convertDigitsToScore: # convertDigitsToScore()
+	lw $t4, firstDigit # sum
+	lw $t3, secondDigit	
+	li $t5, 10
+	mult $t3, $t5
+	mflo $t3
+	add $t4, $t4, $t3
+	lw $t3, thirdDigit	
+	li $t5, 100
+	mult $t3, $t5
+	mflo $t3
+	add $v0, $t4, $t3 # $v0 = 3rd*100 + 2nd*10 + 1st
 	jr $ra
 	
 getRandomNumber: # getRandomNumber(min, max) returns a random number in the range
