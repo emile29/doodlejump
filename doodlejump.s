@@ -9,8 +9,8 @@
 	doodlerColor: .word 0x33cc33
 	blueColor: .word 0x66ccff
 	springColor: .word 0x808080
-	doodler: .word 14, 28 # initial X,Y values of doodler to center at the bottom
-	doodlerOffsets: .word 4, 128, 132, 136, 256, 264
+	doodler: .word 14, 27 # initial X,Y values of doodler to center at the bottom
+	doodlerOffsets: .word 0, 4, 8, 128, 132, 136, 140, 256, 260, 264, 384, 392
 	doodlerOffetsToColorBack: .word 132, 256, 264
 	# randomly choose from an array of vertical separators that will separate the platforms vertically
 	# this makes it a reasonable height to jump to
@@ -22,12 +22,16 @@
 	platformWidthSmall: .word 6
 	platformWidthVerySmall: .word 4
 	gameStatus: .word 1 # 1: alive, 0: gameover
-	jumpHeight: .word 11
-	boostHeight: .word 16
+	jumpHeight: .word 10
+	boostHeight: .word 15
 	boostStatus: .word 0
 	scrollHeightThreshold: .word 11
-	refreshRate: .word 49
+	refreshRate: .word 50
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
+	byeLetters: .word 0, 128, 256, 260, 264, 384, 392, 512, 516, 520,
+			272, 280, 400, 408, 528, 532, 536, 664, 784, 788, 792,
+			32, 36, 40, 160, 288, 292, 296, 416, 544, 548, 552,
+			48, 176, 304, 560
 	scoreLetters: .word 0, 4, 8, 128, 256, 260, 264, 392, 512, 516, 520,
 				16, 20, 24, 144, 272, 400, 528, 532, 536,
 				32, 36, 40, 160, 168, 288, 296, 416, 424, 544, 548, 552,
@@ -62,7 +66,7 @@
 	thirdDigit: .word 0
 	
 .text
-	lw $s0, displayAddress	# $s0 stores the base address for display
+	lw $s0, displayAddress # $s0 stores the base address for display
 	lw $s1, backgroundColor # $s1 stores background color
 	lw $s2, platformColor # $s2 stores platform color
 	lw $s3, doodlerColor # $s3 stores doodler color
@@ -459,6 +463,7 @@ drawDoodler: # drawDoodler()
 	beqz $s5, moveDown # if jump height reached, move down
 	lw $t1, boostStatus
 	beqz $t1, noBoost_1
+	beq $s5, 1, noBoost_1
 	addi $a1, $a1, -2 # increment dooldler height
 	addi $s5, $s5, -2 # reduce jump height threshold
 	j drawDoodlerContinue
@@ -469,7 +474,7 @@ drawDoodler: # drawDoodler()
 	moveDown:
 		addi $a1, $a1, 1 # decrement dooldler height
 		move $t3, $a1 # keep current Y
-		addi $a1, $a1, 3 # get Y of doodler bottom
+		addi $a1, $a1, 4 # get Y of doodler bottom
 		jal XYToAddressOffset
 		add $t1, $v0, $s0 # disp addr of doodler bottom
 		
@@ -523,7 +528,7 @@ drawDoodler: # drawDoodler()
 		add $t4, $t4, $t0
 		sw $s3, 0($t4)
 		addi $t2, $t2, 4 # update counter
-		blt $t2, 24, renderDoodler	
+		blt $t2, 48, renderDoodler	
 	
 	doodlerNotWithinAddrRange:
 	lw $ra, 0($sp)
@@ -539,39 +544,50 @@ endGame: # endGame()
 	addi $sp, $sp, 4
 	
 	jal drawBackground
-	addi $t0, $s0, 1300 # starting addr to render 'SCORE'
-	la $t1, scoreLetters
+	addi $t0, $s0, 676 # starting addr to render 'SCORE'
+	la $t1, byeLetters
 	li $t2, 0 # counter
-	renderLetters:
+	renderBye:
 		add $t3, $t2, $t1
 		lw $t4, 0($t3)
 		add $t4, $t4, $t0
 		sw $s4, 0($t4)
 		addi $t2, $t2, 4
-		blt $t2, 212, renderLetters	
+		blt $t2, 144, renderBye	
+	
+	addi $t0, $s0, 1940 # starting addr to render 'SCORE'
+	la $t1, scoreLetters
+	li $t2, 0 # counter
+	renderScore:
+		add $t3, $t2, $t1
+		lw $t4, 0($t3)
+		add $t4, $t4, $t0
+		sw $s4, 0($t4)
+		addi $t2, $t2, 4
+		blt $t2, 212, renderScore	
 	
 	lw $t0, thirdDigit
 	beqz $t0, noThirdDigit_2
 	lw $a0, firstDigit 
-	li $a1, 2248
+	li $a1, 2888
 	jal drawDigit
 	
 	lw $a0, secondDigit 
-	li $a1, 2232
+	li $a1, 2872
 	jal drawDigit
 	
 	lw $a0, thirdDigit
-	li $a1, 2216
+	li $a1, 2856
 	jal drawDigit
 	j drawDigitDone
 	
 	noThirdDigit_2:
 	lw $a0, firstDigit 
-	li $a1, 2240
+	li $a1, 2880
 	jal drawDigit
 	
 	lw $a0, secondDigit 
-	li $a1, 2224
+	li $a1, 2864
 	jal drawDigit
 	
 	drawDigitDone:
