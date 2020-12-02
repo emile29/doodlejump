@@ -294,12 +294,12 @@ scrollUp: # scrollUp()
 	chooseIfSpring:
 		blt $t4, 10, noSpring # if score >= 10
 		li $a0, 0
-		li $a1, 3
+		li $a1, 5
 		jal getRandomNumber
 		beq $v0, 1, hasSpring
 		j noSpring
 		hasSpring:
-		sw $v0, 12($t2) # spring property will have value 1, probabiliyt=1/3
+		sw $v0, 12($t2) # spring property will have value 1, probabiliyt=1/5
 		j scrollUpLoop
 	noSpring:
 		sw $zero, 12($t2) # spring property will have value 0
@@ -341,11 +341,17 @@ scrollUp: # scrollUp()
 		jal keyboardInput
 		
 		# refresh rate
+		lw $t1, boostStatus
+		beqz $t1, normalRate
+		li $v0, 32
+		li $a0, 50
+		j done
+		normalRate:
 		lw $t0, refreshRate
 		li $v0, 32
 		move $a0, $t0
 		syscall
-		
+		done:
 		j scrollUpLoop
 		
 	scrollUpLoopBreak:			
