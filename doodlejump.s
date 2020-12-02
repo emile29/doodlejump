@@ -1,13 +1,14 @@
 # difficulty levels based on score thresholds
-# level 1 <= 10
-# level 2 > 10
-# level 3 > 20
+# level 1 < 10
+# level 2 >= 10
+# level 3 >= 20
 .data
 	displayAddress: .word 0x10008000
 	backgroundColor: .word 0xfff7e6
 	platformColor: .word 0x663300
 	doodlerColor: .word 0x33cc33
 	blueColor: .word 0x66ccff
+	springColor: .word 0x808080
 	doodler: .word 14, 28 # initial X,Y values of doodler to center at the bottom
 	doodlerOffsets: .word 4, 128, 132, 136, 256, 264
 	doodlerOffetsToColorBack: .word 132, 256, 264
@@ -15,16 +16,17 @@
 	# this makes it a reasonable height to jump to
 	# X values are randomized
 	verticalSeparators: .word 7, 8
-	platformValues: .word 12, 31, 8, 0, 0, 8, 0, 0, 8, 0, 0, 8, 0, 0, 8# [(X,Y,length)_1,...,(X,Y,length)_n], here n=5
-	platformValuesSize: .word 60 # n platforms * 12 bytes, here n=5
+	platformValues: .word 12, 31, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0# [(X,Y,length,spring/notSpring)_1,...,(X,Y,length,spring/notSpring)_n], here n=5
+	platformValuesSize: .word 80 # n platforms * 16 bytes, here n=5
 	platformWidthNormal: .word 8
 	platformWidthSmall: .word 6
 	platformWidthVerySmall: .word 4
-	genSmallPlatform: .word 0 # 0: don't generate, 1: generate
 	gameStatus: .word 1 # 1: alive, 0: gameover
-	jumpHeight: .word 11
-	scrollHeightThreshold: .word 10
-	refreshRate: .word 49
+	jumpHeight: .word 10
+	boostHeight: .word 14
+	boostStatus: .word 0
+	scrollHeightThreshold: .word 11
+	refreshRate: .word 50
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	scoreLetters: .word 0, 4, 8, 128, 256, 260, 264, 392, 512, 516, 520,
 				16, 20, 24, 144, 272, 400, 528, 532, 536,
@@ -66,6 +68,7 @@
 	lw $s3, doodlerColor # $s3 stores doodler color
 	lw $s4, blueColor # $s4 stores blue color
 	lw $s5, jumpHeight # $s5 stores jump height
+	lw $s6, springColor # $s6 stores spring color
 	
 	# start screen
 	jal drawBackground
@@ -103,18 +106,18 @@ initialSetup:
 	la $t0, platformValues
 	lw $t1, platformValuesSize
 	
-	li $t2, 12 # index of current, start with 2nd platform
+	li $t2, 16 # index of current, start with 2nd platform
 	initialSetupLoop:
 		add $t3, $t2, $t0 # get addr of current
 		jal getRandomX
 		sw $v0, 0($t3) # save X of current
-		addi $t3, $t3, -12 # get addr of prev
+		addi $t3, $t3, -16 # get addr of prev
 		lw $t4, 4($t3) # get Y value of prev
 		jal getVerticalSeparator
 		sub $t4, $t4, $v0 # add vertical separator to prev Y to get Y of current
-		addi $t3, $t3, 12 # return to addr of current
+		addi $t3, $t3, 16 # return to addr of current
 		sw $t4, 4($t3) # save Y of current
-		addi $t2, $t2, 12 # update current index
+		addi $t2, $t2, 16 # update current index
 		blt $t2, $t1, initialSetupLoop # loop if current index < arraySize
 
 mainLoop:
@@ -122,6 +125,7 @@ mainLoop:
 	jal drawPlatforms
 	jal drawDoodler
 	
+	# draw score at top-right corner
 	lw $a0, firstDigit
 	li $a1, 116
 	jal drawDigit
@@ -213,6 +217,7 @@ pause:
 	jr $ra
 
 scrollUp: # scrollUp()
+	# increment score digits
 	lw $t0, firstDigit
 	lw $t1, secondDigit
 	lw $t2, thirdDigit
@@ -231,57 +236,73 @@ scrollUp: # scrollUp()
 	la $t0, platformValues
 	lw $t1, platformValuesSize
 	
-	li $t2, 12 # index of current, start with 2nd platform
+	li $t2, 16 # index of current, start with 2nd platform
 	transferPlatformValues:
 		add $t3, $t2, $t0 # get addr of current
 		lw $t4, 0($t3) # get X of current
 		lw $t5, 4($t3) # get Y of current
 		lw $t6, 8($t3) # get length of current
-		addi $t3, $t3, -12 # get addr of prev
+		lw $t7, 12($t3) # get springBool of current
+		addi $t3, $t3, -16 # get addr of prev
 		sw $t4, 0($t3) # replace X of prev
 		sw $t5, 4($t3) # replace Y of prev
 		sw $t6, 8($t3) # replace length of prev
-		addi $t2, $t2, 12 # update current index
+		sw $t7, 12($t3) # replace springBool of prev
+		addi $t2, $t2, 16 # update current index
 		blt $t2, $t1, transferPlatformValues # loop if current index < arraySize
 	
 	# generate new last platform
-	addi $t2, $t1, -12 # index of last platform
+	addi $t2, $t1, -16 # index of last platform
 	add $t2, $t2, $t0 # get addr of last platform
 	jal getRandomX
 	sw $v0, 0($t2) # save X of new last platform
-	addi $t2, $t2, -12 # get addr of 2nd last platform
+	addi $t2, $t2, -16 # get addr of 2nd last platform
 	lw $t3, 4($t2) # get Y of 2nd last platform
 	jal getVerticalSeparator
 	sub $t3, $t3, $v0 # add vertical separator from prev platform Y value to get Y of current
-	addi $t2, $t2, 12 # get addr of last platform
+	addi $t2, $t2, 16 # get addr of last platform
 	sw $t3, 4($t2) # save Y of new last platform
 	
 	jal convertDigitsToScore
-	blt $v0, 10, generateNormalOnly # if score > 10, generateNormalOrSmall
-	blt $v0, 20, generateNormalOrSmall # if score > 20, generateSmallOrVerySmall
-	# generateSmallOrVerySmall
-	li $a0, 0
-	li $a1, 2
-	jal getRandomNumber
-	beqz $v0, generateSmallOnly
-	lw $t5, platformWidthVerySmall # loop counter
-	sw $t5, 8($t2)
-	j scrollUpLoop	
-	generateSmallOnly: # else if score <= 10
-	lw $t5, platformWidthSmall # loop counter
-	sw $t5, 8($t2)	
-	j scrollUpLoop
-	generateNormalOrSmall:
-	li $a0, 0
-	li $a1, 2
-	jal getRandomNumber
-	beqz $v0, generateNormalOnly
-	lw $t5, platformWidthSmall # loop counter
-	sw $t5, 8($t2)
-	j scrollUpLoop	
-	generateNormalOnly: # else if score <= 5
-	lw $t5, platformWidthNormal # loop counter
-	sw $t5, 8($t2)	
+	move $t4, $v0 # $t4 stores the score
+	blt $v0, 10, generateNormalOnly # if score >= 10, generateNormalOrSmall
+	blt $v0, 20, generateNormalOrSmall # if score >= 20, generateSmallOrVerySmall
+	# generateSmallOrVerySmall:
+		li $a0, 0
+		li $a1, 2
+		jal getRandomNumber
+		beqz $v0, generateSmallOnly
+		lw $t5, platformWidthVerySmall # loop counter
+		sw $t5, 8($t2)
+		j chooseIfSpring	
+	generateSmallOnly: 
+		lw $t5, platformWidthSmall # loop counter
+		sw $t5, 8($t2)	
+		j chooseIfSpring
+	generateNormalOrSmall: # else if score < 20
+		li $a0, 0
+		li $a1, 2
+		jal getRandomNumber
+		beqz $v0, generateNormalOnly
+		lw $t5, platformWidthSmall # loop counter
+		sw $t5, 8($t2)
+		j chooseIfSpring	
+	generateNormalOnly: # else if score < 10
+		lw $t5, platformWidthNormal # loop counter
+		sw $t5, 8($t2)	
+	
+	chooseIfSpring:
+		blt $t4, 10, noSpring # if score >= 10
+		li $a0, 0
+		li $a1, 3
+		jal getRandomNumber
+		beq $v0, 1, hasSpring
+		j noSpring
+		hasSpring:
+		sw $v0, 12($t2) # spring property will have value 1, probabiliyt=1/3
+		j scrollUpLoop
+	noSpring:
+		sw $zero, 12($t2) # spring property will have value 0
 	
 	scrollUpLoop:
 		la $t0, platformValues
@@ -297,13 +318,14 @@ scrollUp: # scrollUp()
 			lw $t5, 4($t4) # get Y of current
 			addi $t5, $t5, 1 # decrement height of current
 			sw $t5, 4($t4) # update Y of current
-			addi $t3, $t3, 12 # update current index
+			addi $t3, $t3, 16 # update current index
 			blt $t3, $t1, pushdownLoop # loop if current index < arraySize
 		
 		jal drawBackground
 		jal drawPlatforms
 		jal drawDoodler
 		
+		# draw score at top-right corner
 		lw $a0, firstDigit
 		li $a1, 116
 		jal drawDigit
@@ -357,20 +379,55 @@ drawPlatforms: # drawPlatforms()
 		jal XYToAddressOffset
 		move $t6, $v0 # addr offset of current
 		add $t6, $t6, $s0 # get disp addr of current
+		move $t8, $t6 # $t8 stores disp addr of current platform
 		
 		# check if addr within range, i.e display addr <= x <= bottom-right corner addr
 		blt $t6, $s0, platformNotWithinAddrRange
 		bgt $t6, 0x10008ffc, platformNotWithinAddrRange 
 		
 		lw $t5, 8($t3) # loop counter
+		move $t7, $t5 # $t7 stores the width
 		drawPlatformWidth:
 			sw $s2, 0($t6)
 			addi $t6, $t6, 4 # get next px
 			addi $t5, $t5, -1 # update counter
 			bgtz $t5, drawPlatformWidth # loop while counter > 0	
 		
+		# drawSpringOnPlatform
+		lw $t5, 12($t3)
+		beqz $t5, noSpringOrDONE
+		beq $t7, 8, withNormalWidth
+		beq $t7, 6, withSmallWidth
+		# withVerySmallWidth
+		addi $t8, $t8, -128
+		li $t4, 0
+		drawSpring:
+			sw $s6, 0($t8)
+			addi $t8, $t8, 4
+			addi $t4, $t4, 1	
+			blt $t4, 4, drawSpring
+		j noSpringOrDONE
+		withSmallWidth:
+		addi $t8, $t8, -124
+		li $t4, 0
+		drawSpring_1:
+			sw $s6, 0($t8)
+			addi $t8, $t8, 4
+			addi $t4, $t4, 1	
+			blt $t4, 4, drawSpring_1
+		j noSpringOrDONE
+		withNormalWidth:
+		addi $t8, $t8, -120
+		li $t4, 0
+		drawSpring_2:
+			sw $s6, 0($t8)
+			addi $t8, $t8, 4
+			addi $t4, $t4, 1	
+			blt $t4, 4, drawSpring_2
+		noSpringOrDONE:
+		
 		platformNotWithinAddrRange:
-		addi $t2, $t2, 12 # update current index
+		addi $t2, $t2, 16 # update current index
 		blt $t2, $t1, drawPlatformLoop # loop if current index < arraySize
 	
 	lw $ra, 0($sp)
@@ -386,7 +443,6 @@ drawDoodler: # drawDoodler()
 	lw $a1, 4($t0) # get Y of doodler
 	# continuous jumping
 	beqz $s5, moveDown # if jump height reached, move down
-	# else:
 	addi $a1, $a1, -1 # increment dooldler height
 	addi $s5, $s5, -1 # reduce jump height threshold
 	j drawDoodlerContinue
@@ -397,22 +453,37 @@ drawDoodler: # drawDoodler()
 		jal XYToAddressOffset
 		add $t1, $v0, $s0 # disp addr of doodler bottom
 		
+		# check for spring under doodler along doodler width
+		lw $t2, 0($t1)
+		beq $t2, $s6, resetToBoostHeight 
+		lw $t2, 4($t1)
+		beq $t2, $s6, resetToBoostHeight
+		lw $t2, 8($t1)
+		beq $t2, $s6, resetToBoostHeight
 		# check for new platform under doodler along doodler width
 		lw $t2, 0($t1)
-		beq $t2, $s2, resetJumpHeight 
+		beq $t2, $s2, resetToJumpHeight 
 		lw $t2, 4($t1)
-		beq $t2, $s2, resetJumpHeight
+		beq $t2, $s2, resetToJumpHeight
 		lw $t2, 8($t1)
-		beq $t2, $s2, resetJumpHeight
+		beq $t2, $s2, resetToJumpHeight
 		move $a1, $t3 # restore current Y
 		j drawDoodlerContinue
 		
-	resetJumpHeight: 
-		lw $s5, jumpHeight # reset jump height because new platform under doodler
-		move $a1, $t3
+	resetToJumpHeight: 
+		lw $s5, jumpHeight # reset to jump height because new platform under doodler
+		lw $zero, boostStatus
+		j jumpHeightSet
+	resetToBoostHeight:
+		lw $s5, boostHeight # reset to boost height because spring under doodler
+		li $t1, 1
+		lw $t1, boostStatus
+	
+	jumpHeightSet:
+	move $a1, $t3 # restore current Y
 		
 	drawDoodlerContinue:	
-		sw $a1, 4($t0) # update Y of doodler
+	sw $a1, 4($t0) # update Y of doodler
 		
 	bgt $a1, 31, endGame # end game if doodler reaches bottom of screen
 
@@ -571,14 +642,16 @@ restartGame: # restartGame() resets all objects to their initial values
 	sw $t3, 0($t0)
 	sw $t4, 4($t0)
 	sw $t5, 8($t0)
-	li $t2, 12 # index of current
+	sw $zero, 12($t0)
+	li $t2, 16 # index of current
 	resetPlatforms:
 		add $t3, $t2, $t0
 		sw $zero, 0($t3)
 		sw $zero, 4($t3)
 		li $t5, 8
 		sw $t5, 8($t3)
-		addi $t2, $t2, 12 # update current index
+		sw $zero, 12($t3)
+		addi $t2, $t2, 16 # update current index
 		blt $t2, $t1, resetPlatforms
 	
 	# reset doodler values
@@ -589,6 +662,7 @@ restartGame: # restartGame() resets all objects to their initial values
 	sw $t1, 4($t8)
 	
 	lw $s5, jumpHeight # reset jumpHeight
+	
 	# reset score
 	sw $zero, firstDigit 
 	sw $zero, secondDigit 
