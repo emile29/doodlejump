@@ -22,11 +22,11 @@
 	platformWidthSmall: .word 6
 	platformWidthVerySmall: .word 4
 	gameStatus: .word 1 # 1: alive, 0: gameover
-	jumpHeight: .word 10
-	boostHeight: .word 14
+	jumpHeight: .word 11
+	boostHeight: .word 16
 	boostStatus: .word 0
 	scrollHeightThreshold: .word 11
-	refreshRate: .word 50
+	refreshRate: .word 49
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	scoreLetters: .word 0, 4, 8, 128, 256, 260, 264, 392, 512, 516, 520,
 				16, 20, 24, 144, 272, 400, 528, 532, 536,
@@ -147,6 +147,13 @@ mainLoop:
 	noScrollUp:
 	
 	# refresh rate
+	lw $t1, boostStatus
+	beqz $t1, normalRate_1
+	li $v0, 32
+	li $a0, 48
+	syscall
+	j mainLoop
+	normalRate_1:
 	lw $t0, refreshRate
 	li $v0, 32
 	move $a0, $t0
@@ -344,7 +351,8 @@ scrollUp: # scrollUp()
 		lw $t1, boostStatus
 		beqz $t1, normalRate
 		li $v0, 32
-		li $a0, 50
+		li $a0, 48
+		syscall
 		j done
 		normalRate:
 		lw $t0, refreshRate
@@ -449,6 +457,12 @@ drawDoodler: # drawDoodler()
 	lw $a1, 4($t0) # get Y of doodler
 	# continuous jumping
 	beqz $s5, moveDown # if jump height reached, move down
+	lw $t1, boostStatus
+	beqz $t1, noBoost_1
+	addi $a1, $a1, -2 # increment dooldler height
+	addi $s5, $s5, -2 # reduce jump height threshold
+	j drawDoodlerContinue
+	noBoost_1:
 	addi $a1, $a1, -1 # increment dooldler height
 	addi $s5, $s5, -1 # reduce jump height threshold
 	j drawDoodlerContinue
@@ -478,12 +492,12 @@ drawDoodler: # drawDoodler()
 		
 	resetToJumpHeight: 
 		lw $s5, jumpHeight # reset to jump height because new platform under doodler
-		lw $zero, boostStatus
+		sw $zero, boostStatus
 		j jumpHeightSet
 	resetToBoostHeight:
 		lw $s5, boostHeight # reset to boost height because spring under doodler
 		li $t1, 1
-		lw $t1, boostStatus
+		sw $t1, boostStatus
 	
 	jumpHeightSet:
 	move $a1, $t3 # restore current Y
