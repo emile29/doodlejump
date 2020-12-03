@@ -28,10 +28,10 @@
 	scrollHeightThreshold: .word 11
 	refreshRate: .word 50
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
-	byeLetters: .word 0, 128, 256, 260, 264, 384, 392, 512, 516, 520,
-			272, 280, 400, 408, 528, 532, 536, 664, 784, 788, 792,
-			32, 36, 40, 160, 288, 292, 296, 416, 544, 548, 552,
-			48, 176, 304, 560
+	BYE: .word 0, 4, 8, 128, 140, 256, 260, 264, 384, 396, 512, 516, 520,
+			20, 36, 148, 164, 280, 288, 412, 540, 
+			44, 48, 52, 172, 300, 304, 308, 428, 556, 560, 564, 
+			60, 188, 316, 572
 	scoreLetters: .word 0, 4, 8, 128, 256, 260, 264, 392, 512, 516, 520,
 				16, 20, 24, 144, 272, 400, 528, 532, 536,
 				32, 36, 40, 160, 168, 288, 296, 416, 424, 544, 548, 552,
@@ -51,6 +51,21 @@
 			64, 68, 72, 192, 200, 320, 324, 328, 448, 456, 576, 584,
 			80, 84, 88, 208, 216, 336, 464, 592,
 			96, 100, 104, 228, 356, 484, 612
+	NICE: .word 0, 16, 128, 132, 144, 256, 264, 272, 384, 396, 400, 512, 528,
+			24, 152, 280, 408, 536,
+			32, 36, 40, 160, 288, 416, 544, 548, 552,
+			48, 52, 56, 176, 304, 308, 312, 432, 560, 564, 568,
+			64, 192, 320, 576
+	GREAT: .word 0, 4, 8, 128, 256, 264, 384, 392, 512, 516, 520,
+			16, 20, 24, 144, 152, 272, 400, 528, 
+			32, 36, 40, 160, 288, 292, 296, 416, 544, 548, 552, 
+			48, 52, 56, 176, 184, 304, 308, 312, 432, 440, 560, 568, 
+			64, 68, 72, 196, 324, 452, 580, 
+			80, 208, 336, 592
+	WOW: .word 0, 24, 128, 152, 260, 268, 276, 388, 396, 404, 520, 528,
+			32, 36, 40, 160, 168, 288, 296, 416, 424, 544, 548, 552,
+			48, 72, 176, 200, 308, 316, 324, 436, 444, 452, 568, 576,
+			80, 208, 336, 592 
 	zero: .word 0, 4, 8, 128, 136, 256, 264, 384, 392, 512, 516, 520
 	one: .word 4, 8, 136, 264, 392, 520
 	two: .word 0, 4, 8, 136, 256, 260, 264, 384, 512, 516, 520
@@ -142,6 +157,9 @@ mainLoop:
 	jal drawDigit
 	noThirdDigit:
 	
+	# draw onScreen disp 'NICE, GREAT, WOW'
+	jal drawNiceGreatWow
+	
 	jal keyboardInput
 	
 	la $t0, doodler 
@@ -166,9 +184,6 @@ mainLoop:
 	j mainLoop
 
 keyboardInput:
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
-
 	lw $t9, 0xffff0000 
 	beq $t9, 1, input
 	j noInput
@@ -178,9 +193,6 @@ keyboardInput:
 		beq $t9, 0x6b, moveRight # check if "k"
 		beq $t9, 0x20, pause # check if "spacebar"
 	noInput:
-	
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
 	jr $ra
 
 moveLeft: # moveLeft()
@@ -225,7 +237,7 @@ pause:
 		bne $t7, 1, pauseLoop
 		lw $t7, 0xffff0004
 		bne $t7, 0x20, pauseLoop # press "spacebar" again to resume		
-	jr $ra
+	j noInput
 
 scrollUp: # scrollUp()
 	# increment score digits
@@ -305,12 +317,13 @@ scrollUp: # scrollUp()
 	chooseIfSpring:
 		blt $t4, 10, noSpring # if score >= 10
 		li $a0, 0
-		li $a1, 5
+		li $a1, 4
 		jal getRandomNumber
-		beq $v0, 1, hasSpring
+		beq $v0, 3, hasSpring
 		j noSpring
 		hasSpring:
-		sw $v0, 12($t2) # spring property will have value 1, probabiliyt=1/5
+		li $t5, 1
+		sw $t5, 12($t2) # spring property will have value 1, probabiliyt=1/4
 		j scrollUpLoop
 	noSpring:
 		sw $zero, 12($t2) # spring property will have value 0
@@ -349,6 +362,9 @@ scrollUp: # scrollUp()
 		jal drawDigit
 		noThirdDigit_1:
 		
+		# draw onScreen disp 'NICE, GREAT, WOW'
+		jal drawNiceGreatWow
+		
 		jal keyboardInput
 		
 		# refresh rate
@@ -357,30 +373,82 @@ scrollUp: # scrollUp()
 		li $v0, 32
 		li $a0, 48
 		syscall
-		j done
+		j scrollUpLoop
 		normalRate:
 		lw $t0, refreshRate
 		li $v0, 32
 		move $a0, $t0
 		syscall
-		done:
+		
 		j scrollUpLoop
 		
 	scrollUpLoopBreak:			
 	j noScrollUp
-
-drawBackground: # drawBackground()
+	
+drawNiceGreatWow:
 	addi $sp, $sp, -4
 	sw $ra, 0($sp)
 
+	# NICE
+	jal convertDigitsToScore
+	bne $v0, 10, notNice
+	la $t0, NICE
+	addi $t3, $s0, 796
+	li $t1, 0
+	renderNice:
+		add $t2, $t1, $t0
+		lw $t2, 0($t2)
+		add $t2, $t2, $t3
+		sw $s4, 0($t2)
+		addi $t1, $t1, 4
+		blt $t1, 168, renderNice
+	li $v0, 32
+	li $a0, 25
+	syscall
+	notNice:
+	# GREAT
+	bne $v0, 20, notGreat
+	la $t0, GREAT
+	addi $t3, $s0, 788
+	li $t1, 0
+	renderGreat:
+		add $t2, $t1, $t0
+		lw $t2, 0($t2)
+		add $t2, $t2, $t3
+		sw $s4, 0($t2)
+		addi $t1, $t1, 4
+		blt $t1, 212, renderGreat
+	li $v0, 32
+	li $a0, 25
+	syscall
+	notGreat:	
+	# WOW
+	bne $v0, 30, notWow
+	la $t0, WOW
+	addi $t3, $s0, 792
+	li $t1, 0
+	renderWow:
+		add $t2, $t1, $t0
+		lw $t2, 0($t2)
+		add $t2, $t2, $t3
+		sw $s4, 0($t2)
+		addi $t1, $t1, 4
+		blt $t1, 160, renderWow
+	li $v0, 32
+	li $a0, 25
+	syscall
+	notWow:
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+
+drawBackground: # drawBackground()
 	move $t7, $s0 # disp addr
 	drawBackgroundLoop:
 		sw $s1, 0($t7)
 		addi $t7, $t7, 4 # update disp addr
 		ble $t7, 0x10008ffc, drawBackgroundLoop # loop if < bottom-right corner addr
-		
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
 	jr $ra
 
 drawPlatforms: # drawPlatforms()
@@ -536,16 +604,16 @@ drawDoodler: # drawDoodler()
 	jr $ra
 	
 endGame: # endGame()
+	lw $ra, 0($sp) # pop $ra of drawDoodler caller func
+	addi $sp, $sp, 4
+
 	li $v0, 32
 	li $a0, 100
 	syscall
 	
-	lw $ra, 0($sp) # pop $ra of drawDoodler caller func
-	addi $sp, $sp, 4
-	
 	jal drawBackground
-	addi $t0, $s0, 676 # starting addr to render 'SCORE'
-	la $t1, byeLetters
+	addi $t0, $s0, 800 # starting addr to render 'BYE'
+	la $t1, BYE
 	li $t2, 0 # counter
 	renderBye:
 		add $t3, $t2, $t1
@@ -606,7 +674,50 @@ endGame: # endGame()
 		noRestart:
 		lw $t7, gameStatus
 		beqz $t7, endGameScreenLoop
-		
+	
+restartGame: # restartGame() resets all objects to their initial values
+	# reset platforms values
+	la $t0, platformValues
+	lw $t1, platformValuesSize
+	li $t3, 12
+	li $t4, 31
+	li $t5, 8
+	sw $t3, 0($t0)
+	sw $t4, 4($t0)
+	sw $t5, 8($t0)
+	sw $zero, 12($t0)
+	li $t2, 16 # index of current
+	resetPlatforms:
+		add $t3, $t2, $t0
+		sw $zero, 0($t3)
+		sw $zero, 4($t3)
+		li $t5, 8
+		sw $t5, 8($t3)
+		sw $zero, 12($t3)
+		addi $t2, $t2, 16 # update current index
+		blt $t2, $t1, resetPlatforms
+	
+	# reset doodler values
+	la $t8, doodler
+	li $t0, 14
+	li $t1, 28
+	sw $t0, 0($t8)
+	sw $t1, 4($t8)
+	
+	lw $s5, jumpHeight # reset jumpHeight
+	
+	# reset score
+	sw $zero, firstDigit 
+	sw $zero, secondDigit 
+	sw $zero, thirdDigit 
+	
+	# reset game status to 1
+	la $t0, gameStatus
+	li $t1, 1
+	sw $t1, 0($t0)
+	
+	j initialSetup
+	
 drawDigit: # drawDigit(digit, starting offset)
 	bne $a0, 0, num1
 	la $t1, zero
@@ -668,67 +779,15 @@ drawDigit: # drawDigit(digit, starting offset)
 		blt $t2, $t5, renderDigit
 	jr $ra
 	
-restartGame: # restartGame() resets all objects to their initial values
-	# reset platforms values
-	la $t0, platformValues
-	lw $t1, platformValuesSize
-	li $t3, 12
-	li $t4, 31
-	li $t5, 8
-	sw $t3, 0($t0)
-	sw $t4, 4($t0)
-	sw $t5, 8($t0)
-	sw $zero, 12($t0)
-	li $t2, 16 # index of current
-	resetPlatforms:
-		add $t3, $t2, $t0
-		sw $zero, 0($t3)
-		sw $zero, 4($t3)
-		li $t5, 8
-		sw $t5, 8($t3)
-		sw $zero, 12($t3)
-		addi $t2, $t2, 16 # update current index
-		blt $t2, $t1, resetPlatforms
-	
-	# reset doodler values
-	la $t8, doodler
-	li $t0, 14
-	li $t1, 28
-	sw $t0, 0($t8)
-	sw $t1, 4($t8)
-	
-	lw $s5, jumpHeight # reset jumpHeight
-	
-	# reset score
-	sw $zero, firstDigit 
-	sw $zero, secondDigit 
-	sw $zero, thirdDigit 
-	
-	# reset game status to 1
-	la $t0, gameStatus
-	li $t1, 1
-	sw $t1, 0($t0)
-	
-	j initialSetup
-	
 XYToAddressOffset: # XYToAddressOffset(X, Y) converts X,Y from px to address offset in bytes
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
-
 	sll $t8, $a0, 2 # X*4 
 	li $t9, 128
 	mult $a1, $t9
 	mflo $t9 # Y*128
-	add $v0, $t8, $t9 # X*4 + Y*128 gives the address offset
-	
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
+	add $v0, $t8, $t9 # X*4 + Y*128 gives the address offset	
 	jr $ra
 		
 getRandomX: # getRandomX() returns a random X in px
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
-
 	# since platform width 8px, 32-8=24 possible platform locations per line
 	# choose a random number between 0 and 24
 	li $a0, 0
@@ -736,15 +795,9 @@ getRandomX: # getRandomX() returns a random X in px
 	li $v0, 42 
 	syscall
 	move $v0, $a0 # get random number
-	
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
 	jr $ra
 
 getVerticalSeparator: # getVerticalSeparator() returns a random vertical separator in px
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
-
 	# choose a random number out of 0, 1 or 2
 	li $a0, 0
 	li $a1, 2
@@ -756,9 +809,6 @@ getVerticalSeparator: # getVerticalSeparator() returns a random vertical separat
 	add $t8, $t8, $t7
 	lw $t7, 0($t8) # get value from array
 	move $v0, $t7 # return value
-	
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
 	jr $ra
 	
 convertDigitsToScore: # convertDigitsToScore()
@@ -776,13 +826,7 @@ convertDigitsToScore: # convertDigitsToScore()
 	jr $ra
 	
 getRandomNumber: # getRandomNumber(min, max) returns a random number in the range
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
-
 	li $v0, 42
 	syscall
 	move $v0, $a0
-	
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
 	jr $ra
