@@ -812,12 +812,12 @@ getVerticalSeparator: # getVerticalSeparator() returns a random vertical separat
 	jr $ra
 	
 convertDigitsToScore: # convertDigitsToScore()
-	lw $t4, firstDigit # sum
+	lw $t4, firstDigit 
 	lw $t3, secondDigit	
 	li $t5, 10
 	mult $t3, $t5
 	mflo $t3
-	add $t4, $t4, $t3
+	add $t4, $t4, $t3 # add sum to first digit
 	lw $t3, thirdDigit	
 	li $t5, 100
 	mult $t3, $t5
