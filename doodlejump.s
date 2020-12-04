@@ -3,7 +3,7 @@
 # level 2 >= 10
 # level 3 >= 20
 .data
-	displayAddress: .word 0x10008000
+	buffer: .space 4096
 	backgroundColor: .word 0xfff7e6
 	platformColor: .word 0x663300
 	doodlerColor: .word 0x33cc33
@@ -26,7 +26,8 @@
 	boostHeight: .word 15
 	boostStatus: .word 0
 	scrollHeightThreshold: .word 11
-	refreshRate: .word 50
+	refreshRate: .word 48
+	boostRefreshRate: .word 46
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	BYE: .word 0, 4, 8, 128, 140, 256, 260, 264, 384, 396, 512, 516, 520,
 			20, 36, 148, 164, 280, 288, 412, 540, 
@@ -81,7 +82,7 @@
 	thirdDigit: .word 0
 	
 .text
-	lw $s0, displayAddress # $s0 stores the base address for display
+	la $s0, buffer # $s0 stores the addr of buffer
 	lw $s1, backgroundColor # $s1 stores background color
 	lw $s2, platformColor # $s2 stores platform color
 	lw $s3, doodlerColor # $s3 stores doodler color
@@ -111,6 +112,8 @@
 		sw $s4, 0($t3)
 		addi $t2, $t2, 4 # update current index
 		blt $t2, 240, drawToStart
+		
+	jal copyToScreen
 	
 	pressSToStart:
 		li $v0, 32
@@ -160,28 +163,40 @@ mainLoop:
 	# draw onScreen disp 'NICE, GREAT, WOW'
 	jal drawNiceGreatWow
 	
-	jal keyboardInput
-	
 	la $t0, doodler 
 	lw $t1, 4($t0) # get Y of doodler
 	lw $t2, scrollHeightThreshold
 	ble $t1, $t2, scrollUp # if Y of doodler < threshold, scroll up
 	noScrollUp:
 	
+	jal keyboardInput
+	
+	jal copyToScreen
+	
 	# refresh rate
 	lw $t1, boostStatus
 	beqz $t1, normalRate_1
 	li $v0, 32
-	li $a0, 48
+	lw $a0, boostRefreshRate
 	syscall
 	j mainLoop
 	normalRate_1:
-	lw $t0, refreshRate
 	li $v0, 32
-	move $a0, $t0
+	lw $a0, refreshRate
 	syscall
 		
 	j mainLoop
+
+copyToScreen:
+	li $t1, 0
+	copy:
+		add $t2, $t1, $s0	
+		lw $t2, 0($t2)
+		add $t3, $t1, $gp
+		sw $t2, 0($t3)
+		addi $t1, $t1, 4
+		blt $t1, 4096, copy
+	jr $ra
 
 keyboardInput:
 	lw $t9, 0xffff0000 
@@ -219,13 +234,13 @@ moveRight: # moveRight()
 		sw $t9, 0($t8)
 	j noInput
 
-pause:	
+pause: # pause()
 	la $t7, pauseOffsets
 	li $t8, 0
 	drawPause:
 		add $t9, $t8, $t7
 		lw $t9, 0($t9)
-		add $t9, $t9, $s0
+		addi $t9, $t9, 0x10008000
 		sw $s4, 0($t9)
 		add $t8, $t8, 4
 		blt $t8, 24, drawPause
@@ -367,17 +382,18 @@ scrollUp: # scrollUp()
 		
 		jal keyboardInput
 		
+		jal copyToScreen
+		
 		# refresh rate
 		lw $t1, boostStatus
 		beqz $t1, normalRate
 		li $v0, 32
-		li $a0, 48
+		lw $a0, boostRefreshRate
 		syscall
 		j scrollUpLoop
 		normalRate:
-		lw $t0, refreshRate
 		li $v0, 32
-		move $a0, $t0
+		lw $a0, refreshRate
 		syscall
 		
 		j scrollUpLoop
@@ -385,7 +401,7 @@ scrollUp: # scrollUp()
 	scrollUpLoopBreak:			
 	j noScrollUp
 	
-drawNiceGreatWow:
+drawNiceGreatWow: # drawNiceGreatWow()
 	addi $sp, $sp, -4
 	sw $ra, 0($sp)
 
@@ -403,7 +419,7 @@ drawNiceGreatWow:
 		addi $t1, $t1, 4
 		blt $t1, 168, renderNice
 	li $v0, 32
-	li $a0, 25
+	li $a0, 18
 	syscall
 	notNice:
 	# GREAT
@@ -419,7 +435,7 @@ drawNiceGreatWow:
 		addi $t1, $t1, 4
 		blt $t1, 212, renderGreat
 	li $v0, 32
-	li $a0, 25
+	li $a0, 18
 	syscall
 	notGreat:	
 	# WOW
@@ -435,7 +451,7 @@ drawNiceGreatWow:
 		addi $t1, $t1, 4
 		blt $t1, 160, renderWow
 	li $v0, 32
-	li $a0, 25
+	li $a0, 18
 	syscall
 	notWow:
 	
@@ -444,11 +460,12 @@ drawNiceGreatWow:
 	jr $ra
 
 drawBackground: # drawBackground()
-	move $t7, $s0 # disp addr
+	li $t7, 0 # disp addr
 	drawBackgroundLoop:
-		sw $s1, 0($t7)
+		add $t8, $t7, $s0
+		sw $s1, 0($t8)
 		addi $t7, $t7, 4 # update disp addr
-		ble $t7, 0x10008ffc, drawBackgroundLoop # loop if < bottom-right corner addr
+		blt $t7, 4096, drawBackgroundLoop # loop if < bottom-right corner addr
 	jr $ra
 
 drawPlatforms: # drawPlatforms()
@@ -464,12 +481,12 @@ drawPlatforms: # drawPlatforms()
 		lw $a1, 4($t3) # get Y of current
 		jal XYToAddressOffset
 		move $t6, $v0 # addr offset of current
-		add $t6, $t6, $s0 # get disp addr of current
-		move $t8, $t6 # $t8 stores disp addr of current platform
 		
 		# check if addr within range, i.e display addr <= x <= bottom-right corner addr
-		blt $t6, $s0, platformNotWithinAddrRange
-		bgt $t6, 0x10008ffc, platformNotWithinAddrRange 
+		blt $t6, 0, platformNotWithinAddrRange
+		bge $t6, 4096, platformNotWithinAddrRange 
+		add $t6, $t6, $s0 # get disp addr of current
+		move $t8, $t6
 		
 		lw $t5, 8($t3) # loop counter
 		move $t7, $t5 # $t7 stores the width
@@ -486,6 +503,7 @@ drawPlatforms: # drawPlatforms()
 		beq $t7, 6, withSmallWidth
 		# withVerySmallWidth
 		addi $t8, $t8, -128
+		blt $t8, $s0, springNotWithinAddrRange
 		li $t4, 0
 		drawSpring:
 			sw $s6, 0($t8)
@@ -495,6 +513,7 @@ drawPlatforms: # drawPlatforms()
 		j noSpringOrDONE
 		withSmallWidth:
 		addi $t8, $t8, -124
+		blt $t8, $s0, springNotWithinAddrRange
 		li $t4, 0
 		drawSpring_1:
 			sw $s6, 0($t8)
@@ -504,6 +523,7 @@ drawPlatforms: # drawPlatforms()
 		j noSpringOrDONE
 		withNormalWidth:
 		addi $t8, $t8, -120
+		blt $t8, $s0, springNotWithinAddrRange
 		li $t4, 0
 		drawSpring_2:
 			sw $s6, 0($t8)
@@ -511,6 +531,7 @@ drawPlatforms: # drawPlatforms()
 			addi $t4, $t4, 1	
 			blt $t4, 4, drawSpring_2
 		noSpringOrDONE:
+		springNotWithinAddrRange:
 		
 		platformNotWithinAddrRange:
 		addi $t2, $t2, 16 # update current index
@@ -578,15 +599,15 @@ drawDoodler: # drawDoodler()
 	drawDoodlerContinue:	
 	sw $a1, 4($t0) # update Y of doodler
 		
-	bgt $a1, 31, endGame # end game if doodler reaches bottom of screen
+	bgt $a1, 32, endGame # end game if doodler reaches bottom of screen
 
 	# draw doodler
 	jal XYToAddressOffset
 	move $t0, $v0 # starting addr to render doodler
-	add $t0, $t0, $s0 # add base disp addr
 	# check if addr within range, i.e display addr <= x <= bottom-right corner addr
-	blt $t0, $s0, doodlerNotWithinAddrRange
-	bgt $t0, 0x10008ffc, doodlerNotWithinAddrRange 
+	blt $t0, 0, doodlerNotWithinAddrRange
+	bge $t0, 4096, doodlerNotWithinAddrRange 
+	add $t0, $t0, $s0 # add base disp addr
 	
 	la $t1, doodlerOffsets
 	li $t2, 0 # counter
@@ -594,9 +615,12 @@ drawDoodler: # drawDoodler()
 		add $t3, $t2, $t1
 		lw $t4, 0($t3)
 		add $t4, $t4, $t0
+		addi $t5, $s0, 4096
+		bge $t4, $t5, partOutOfRange
 		sw $s3, 0($t4)
 		addi $t2, $t2, 4 # update counter
 		blt $t2, 48, renderDoodler	
+	partOutOfRange:
 	
 	doodlerNotWithinAddrRange:
 	lw $ra, 0($sp)
@@ -657,6 +681,8 @@ endGame: # endGame()
 	lw $a0, secondDigit 
 	li $a1, 2864
 	jal drawDigit
+	
+	jal copyToScreen
 	
 	drawDigitDone:
 	la $t7, gameStatus
