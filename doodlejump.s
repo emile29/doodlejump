@@ -602,7 +602,6 @@ drawDoodler: # drawDoodler()
 	bgt $a1, 32, endGame # end game if doodler reaches bottom of screen
 
 	# draw doodler
-	lw $a0, 0($t0) # get X of doodler
 	jal XYToAddressOffset
 	move $t0, $v0 # starting addr to render doodler
 	# check if addr within range, i.e display addr <= x <= bottom-right corner addr
