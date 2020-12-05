@@ -26,8 +26,8 @@
 	boostHeight: .word 15
 	boostStatus: .word 0
 	scrollHeightThreshold: .word 11
-	refreshRate: .word 48
-	boostRefreshRate: .word 46
+	refreshRate: .word 45
+	boostRefreshRate: .word 43
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	BYE: .word 0, 4, 8, 128, 140, 256, 260, 264, 384, 396, 512, 516, 520,
 			20, 36, 148, 164, 280, 288, 412, 540, 
@@ -187,7 +187,7 @@ mainLoop:
 		
 	j mainLoop
 
-copyToScreen:
+copyToScreen: # copyToScreen()
 	li $t1, 0
 	copy:
 		add $t2, $t1, $s0	
@@ -198,7 +198,7 @@ copyToScreen:
 		blt $t1, 4096, copy
 	jr $ra
 
-keyboardInput:
+keyboardInput: # keyboardInput()
 	lw $t9, 0xffff0000 
 	beq $t9, 1, input
 	j noInput
@@ -484,7 +484,7 @@ drawPlatforms: # drawPlatforms()
 		
 		# check if addr within range, i.e display addr <= x <= bottom-right corner addr
 		blt $t6, 0, platformNotWithinAddrRange
-		bge $t6, 4096, platformNotWithinAddrRange 
+		bgt $t6, 4092, platformNotWithinAddrRange 
 		add $t6, $t6, $s0 # get disp addr of current
 		move $t8, $t6
 		
@@ -565,7 +565,7 @@ drawDoodler: # drawDoodler()
 		move $t3, $a1 # keep current Y
 		addi $a1, $a1, 4 # get Y of doodler bottom
 		jal XYToAddressOffset
-		add $t1, $v0, $s0 # disp addr of doodler bottom
+		add $t1, $v0, $gp # disp addr of doodler bottom
 		
 		# check for spring under doodler along doodler width
 		lw $t2, 0($t1)
@@ -602,11 +602,12 @@ drawDoodler: # drawDoodler()
 	bgt $a1, 32, endGame # end game if doodler reaches bottom of screen
 
 	# draw doodler
+	lw $a0, 0($t0) # get X of doodler
 	jal XYToAddressOffset
 	move $t0, $v0 # starting addr to render doodler
 	# check if addr within range, i.e display addr <= x <= bottom-right corner addr
 	blt $t0, 0, doodlerNotWithinAddrRange
-	bge $t0, 4096, doodlerNotWithinAddrRange 
+	bgt $t0, 4092, doodlerNotWithinAddrRange 
 	add $t0, $t0, $s0 # add base disp addr
 	
 	la $t1, doodlerOffsets
