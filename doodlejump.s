@@ -26,8 +26,8 @@
 	boostHeight: .word 15
 	boostStatus: .word 0
 	scrollHeightThreshold: .word 11
-	refreshRate: .word 45
-	boostRefreshRate: .word 40
+	refreshRate: .word 48
+	boostRefreshRate: .word 44
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	BYE: .word 0, 4, 8, 128, 140, 256, 260, 264, 384, 396, 512, 516, 520,
 			20, 36, 148, 164, 280, 288, 412, 540, 
