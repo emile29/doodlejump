@@ -1,7 +1,47 @@
-# difficulty levels based on score thresholds
-# level 1 < 10
-# level 2 >= 10
-# level 3 >= 20
+#####################################################################
+#
+# CSCB58 Fall 2020 Assembly Final Project
+# University of Toronto, Scarborough
+#
+# Student: Emile Li Tim Cheong, 1004811251
+#
+# Bitmap Display Configuration:
+# - Unit width in pixels: 8					     
+# - Unit height in pixels: 8
+# - Display width in pixels: 256
+# - Display height in pixels: 256
+# - Base Address for Display: 0x10008000 ($gp)
+#
+# Which milestone is reached in this submission?
+# (See the assignment handout for descriptions of the milestones)
+# - Milestone 5
+#
+# Which approved additional features have been implemented?
+# (See the assignment handout for the list of additional features)
+# 1. Score count: display on screen(top-right corner)
+# 2. Increase in difficulty as game progresses:
+#		- platforms become smaller when at different score thresholds(see additional info)
+#		- the speed is increased at scores 10 and 20.
+# 3. Boosting: springs(grey colored) which enable doodler to jump over 2 platforms instead of one
+# 4. Fancier graphics: 
+#		- improved shape of doodler compared to demo video
+#		- start and end screen(displays score at the end)
+#		- pause/resume the game by pressing 'spacebar' and pause icon appears at top-left corner
+# 5. Dynamic on-screen notifications: "NICE!" at score=10, "GREAT!" at score=20 and "WOW!" at score=30
+#
+# Link to video demonstration for final submission:
+# - https://youtu.be/w3UjNaf5_lg
+#
+# Any additional information that the TA needs to know:
+# For testing purposes, I set 3 difficulty levels based on score thresholds
+# level 1 < 10 : normal size platforms only
+# level 2 >= 10 : normal + small platforms and springs
+# level 3 >= 20 : small + very small platforms and springs
+#
+# The score system works such that each time i scroll up the screen, i increment the score by 1.
+#
+#####################################################################
+
 .data
 	buffer: .space 4096
 	backgroundColor: .word 0xfff7e6
@@ -16,18 +56,18 @@
 	# this makes it a reasonable height to jump to
 	# X values are randomized
 	verticalSeparators: .word 7, 8
-	platformValues: .word 12, 31, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0# [(X,Y,length,spring/notSpring)_1,...,(X,Y,length,spring/notSpring)_n], here n=5
+	platformValues: .word 12, 31, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0, 8, 0# [(X,Y,width,spring/notSpring)_1,...,(X,Y,width,spring/notSpring)_n], here n=5
 	platformValuesSize: .word 80 # n platforms * 16 bytes, here n=5
 	platformWidthNormal: .word 8
 	platformWidthSmall: .word 6
 	platformWidthVerySmall: .word 4
 	gameStatus: .word 1 # 1: alive, 0: gameover
-	jumpHeight: .word 10
-	boostHeight: .word 15
+	jumpHeight: .word 11
+	boostHeight: .word 16
 	boostStatus: .word 0
-	scrollHeightThreshold: .word 11
-	refreshRate: .word 48
-	boostRefreshRate: .word 44
+	scrollHeightThreshold: .word 10
+	refreshRate: .word 40
+	boostRefreshRate: .word 35
 	pauseOffsets: .word 0, 8, 128, 136, 256, 264
 	BYE: .word 0, 4, 8, 128, 140, 256, 260, 264, 384, 396, 512, 516, 520,
 			20, 36, 148, 164, 280, 288, 412, 540, 
@@ -166,7 +206,7 @@ mainLoop:
 	la $t0, doodler 
 	lw $t1, 4($t0) # get Y of doodler
 	lw $t2, scrollHeightThreshold
-	ble $t1, $t2, scrollUp # if Y of doodler < threshold, scroll up
+	ble $t1, $t2, scrollUp # if Y of doodler <= threshold(measured from top of screen), scroll up
 	noScrollUp:
 	
 	jal keyboardInput
@@ -255,7 +295,7 @@ pause: # pause()
 	j noInput
 
 scrollUp: # scrollUp()
-	# increment score digits
+	# increment score on each scroll up
 	lw $t0, firstDigit
 	lw $t1, secondDigit
 	lw $t2, thirdDigit
@@ -270,10 +310,28 @@ scrollUp: # scrollUp()
 	sw $t0, firstDigit
 	sw $t1, secondDigit
 	sw $t2, thirdDigit
+	
+	# increase speed(refresh rate) at score=10 and 20
+	jal convertDigitsToScore
+	bne $v0, 10, noIncreseInSpeed
+	lw $t0, refreshRate
+	lw $t1, boostRefreshRate
+	addi $t0, $t0, -1
+	addi $t1, $t1, -1
+	sw $t0, refreshRate
+	sw $t1, boostRefreshRate
+	j noIncreseInSpeed
+	bne $v0, 20, noIncreseInSpeed 
+	lw $t0, refreshRate
+	lw $t1, boostRefreshRate
+	addi $t0, $t0, -1
+	addi $t1, $t1, -1
+	sw $t0, refreshRate
+	sw $t1, boostRefreshRate
+	noIncreseInSpeed:
 
 	la $t0, platformValues
 	lw $t1, platformValuesSize
-	
 	li $t2, 16 # index of current, start with 2nd platform
 	transferPlatformValues:
 		add $t3, $t2, $t0 # get addr of current
@@ -338,7 +396,7 @@ scrollUp: # scrollUp()
 		j noSpring
 		hasSpring:
 		li $t5, 1
-		sw $t5, 12($t2) # spring property will have value 1, probabiliyt=1/4
+		sw $t5, 12($t2) # spring property will have value 1, probability=1/4
 		j scrollUpLoop
 	noSpring:
 		sw $zero, 12($t2) # spring property will have value 0
@@ -462,7 +520,7 @@ drawNiceGreatWow: # drawNiceGreatWow()
 drawBackground: # drawBackground()
 	li $t7, 0 # disp addr
 	drawBackgroundLoop:
-		add $t8, $t7, $s0
+		add $t8, $t7, $s0 # add to buffer base addr
 		sw $s1, 0($t8)
 		addi $t7, $t7, 4 # update disp addr
 		blt $t7, 4096, drawBackgroundLoop # loop if < bottom-right corner addr
@@ -737,6 +795,12 @@ restartGame: # restartGame() resets all objects to their initial values
 	sw $zero, secondDigit 
 	sw $zero, thirdDigit 
 	
+	# reset refreshRates
+	li $t0, 40
+	li $t1, 35
+	sw $t0, refreshRate
+	sw $t1, boostRefreshRate
+	
 	# reset game status to 1
 	la $t0, gameStatus
 	li $t1, 1
@@ -747,7 +811,7 @@ restartGame: # restartGame() resets all objects to their initial values
 drawDigit: # drawDigit(digit, starting offset)
 	bne $a0, 0, num1
 	la $t1, zero
-	li $t5, 48
+	li $t5, 48 # setting the length of digit offsset array
 	j numChosen
 	num1:
 	bne $a0, 1, num2
@@ -802,7 +866,7 @@ drawDigit: # drawDigit(digit, starting offset)
 		add $t4, $t4, $a1
 		sw $s4, 0($t4)
 		addi $t2, $t2, 4
-		blt $t2, $t5, renderDigit
+		blt $t2, $t5, renderDigit # loop if still < array length
 	jr $ra
 	
 XYToAddressOffset: # XYToAddressOffset(X, Y) converts X,Y from px to address offset in bytes
@@ -824,14 +888,14 @@ getRandomX: # getRandomX() returns a random X in px
 	jr $ra
 
 getVerticalSeparator: # getVerticalSeparator() returns a random vertical separator in px
-	# choose a random number out of 0, 1 or 2
+	# choose a random number out of 0 and 1
 	li $a0, 0
 	li $a1, 2
 	li $v0, 42 
 	syscall
 	move $t7, $a0 # get random number
 	la $t8, verticalSeparators
-	sll $t7, $t7, 2 # *4 to get index to retrieve from array(index 0,4 or 8)
+	sll $t7, $t7, 2 # *4 to get index to retrieve from array(index 0 or 4)
 	add $t8, $t8, $t7
 	lw $t7, 0($t8) # get value from array
 	move $v0, $t7 # return value
